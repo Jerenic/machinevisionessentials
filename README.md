@@ -163,4 +163,4 @@ cv2.destroyAllWindows()
 
 ## Step 6: Write a protocol and make a presentation
 
-Use the provided Latex Template in Moodle and write a lab report. Document every step you made, every challenge, every pit fall what you encounterd.
+Use the provided Latex Template in Moodle and write a lab report. Document every step you made, every challenge, every pit fall what you encounterd. Also make a presentation for the next lecture, it should be 10 Minutes where you recap everything from the lab report.
