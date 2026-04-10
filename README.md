@@ -66,7 +66,7 @@ Setup a virtual python environment with uv (prefer versions >=3.10 and <=3.12).
 
 Create a basic dataset
 - Take the provided candies (celebration box) and make pictures with your smartphone.
-- Generate at least 20-50 images. Keep in mind what you have learned in the lecture.
+- Generate at least 100 images. Keep in mind what you have learned in the lecture.
     - Choose different backgrounds.
     - Use different angles.
     - Only one thing or many things in the picture.
@@ -78,7 +78,7 @@ Create a more advanced dataset
 - Write a python script to augment the pictures
     - You can use libraries like OpenCV or PIL (Pillow) -> https://oceancv.org/book/Augmentation_Manual.html, or
     - Use a custom transfer of YOLO to augment the pictures -> https://docs.ultralytics.com/guides/yolo-data-augmentation/
-    - Target at least 100 images.
+    - Target at least 200 images.
 
 Export the dataset from Label-Studio
 - The File structure should be ...
