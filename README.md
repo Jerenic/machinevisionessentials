@@ -23,6 +23,9 @@ Imagine you are a software developer and you start your working day by checking 
 Hi, I had a great idea for our product! It should automatically can identify and count how many candies are within sight. So you should design a Machine Vision application which can identify different sorts of Candy on the fly. 
 The candy is own a covayer belt and the camera system looks on the belt. It should autometically identify the kind of candy and how many are within sight.
 ```
+The system looks like this:
+![image](candy_detection_system.png)
+
 
 **Minmal Tasks (35/70 Punkte)**:
 - Setup Python, Yolo, and Label-Studio.
