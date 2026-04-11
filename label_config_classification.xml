@@ -1,0 +1,9 @@
+<View>
+  <!-- Bildklassifikation: eine Klasse pro Bild (choice="multiple" für Mehrfachauswahl) -->
+  <Image name="image" value="$image" zoom="true" zoomControl="true"/>
+  <Choices name="class" toName="image" choice="single">
+    <Choice value="ok"/>
+    <Choice value="nok"/>
+    <Choice value="uncertain"/>
+  </Choices>
+</View>

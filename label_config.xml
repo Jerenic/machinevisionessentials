@@ -1,0 +1,15 @@
+<View>
+  <!-- OBB: rotierbare Boxen (YOLO-OBB / Ultralytics). Tasks: JSON mit Feld "image". -->
+  <!-- Rotation: https://labelstud.io/templates/image_bbox#Bounding-box-rotation-in-the-Label-Studio-results -->
+  <Image name="image" value="$image" zoom="true" zoomControl="true" rotateControl="true"/>
+  <RectangleLabels name="bbox" toName="image" strokeWidth="3" canRotate="true">
+    <Label value="maltesers" background="#5D4037"/>
+    <Label value="galaxy" background="#6D4C41"/>
+    <Label value="bounty" background="#2E7D32"/>
+    <Label value="snickers" background="#C62828"/>
+    <Label value="mars" background="#AD1457"/>
+    <Label value="twix" background="#D84315"/>
+    <Label value="milky_way" background="#1565C0"/>
+    <Label value="galaxy_truffle" background="#4527A0"/>
+  </RectangleLabels>
+</View>

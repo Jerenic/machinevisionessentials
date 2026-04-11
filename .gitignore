@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+
+# Lokales YOLO-Dataset (groß; mit split_dataset.py aus Label-Studio-Export erzeugen)
+candy_dataset/
+
+# Label Studio: lokale Bilder/Daten unter mydata nicht versionieren
+mydata/**
+!mydata/.gitkeep
