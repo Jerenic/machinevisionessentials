@@ -7,3 +7,29 @@ requires-python = ">=3.12"
 dependencies = [
     "label-studio>=1.23.0",
 ]
+
+[project.optional-dependencies]
+# PowerPoint: zusammen mit train installieren, sonst werden GPU-Pakete entfernt:
+#   uv sync --extra train --extra slides && uv run --extra train --extra slides python presentation/build_presentation.py
+slides = [
+    "python-pptx>=1.0.0",
+]
+
+# README Step 3–5: YOLO-Training, Augmentation, Webcam
+train = [
+    "ultralytics>=8.3.0",
+    "opencv-python>=4.8.0",
+    "albumentations>=1.4.0",
+    "torch",
+    "torchvision",
+]
+
+# PyTorch mit NVIDIA-GPU (CUDA 12.4). Für CPU-only: Index unten auf .../whl/cpu setzen.
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }

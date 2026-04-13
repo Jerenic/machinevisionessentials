@@ -167,3 +167,32 @@ cv2.destroyAllWindows()
 ## Step 6: Write a protocol and make a presentation
 
 Use the provided Latex Template in Moodle and write a lab report. Document every step you made, every challenge, every pit fall what you encounterd. Also make a presentation for the next lecture, it should be 10 Minutes where you recap everything from the lab report.
+
+---
+
+## Ausführung in diesem Repository (automatisiert)
+
+Voraussetzungen: `candy_dataset/` mit `data.yaml`, `images/{train,val,test}`, `labels/{...}` (z. B. nach `split_dataset.py` + Label-Studio-Export).
+
+Optional **Extras** für Training, Augmentation und Webcam. In `pyproject.toml` ist PyTorch über den Index **`cu124`** (CUDA 12.4, NVIDIA-GPU) verdrahtet. Nur CPU: Index in `[[tool.uv.index]]` auf `https://download.pytorch.org/whl/cpu` stellen und `uv lock` / `uv sync --extra train` erneut ausführen.
+
+```bash
+uv sync --extra train
+```
+
+| Schritt | Befehl |
+|--------|--------|
+| **Augmentation** (Advanced, Ziel ≥ 200 Train-Bilder) | `uv run --extra train python augment_dataset.py --target 200` |
+| **Training** (Step 3) | `uv run --extra train python train_yolo.py --epochs 50 --batch 8 --device 0` (Windows: `--workers 0` ist Standard; ggf. `--batch` senken) |
+| **Test-Inferenz** (Step 4) | `uv run --extra train python predict_test.py --device 0` → Ausgaben unter `runs/detect/predict_test/` |
+| **Webcam** (Step 5) | `uv run --extra train python webcam_detect.py --device 0` (Taste `q` beenden) |
+
+**Hinweise:**
+
+- Nach `uv sync` prüfen: `uv run --extra train python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"`.
+- **Windows / wenig RAM:** `train_yolo.py` setzt standardmäßig **`--workers 0`** (keine parallelen DataLoader-Prozesse), um WinError 1455 („Auslagerungsdatei zu klein“) und OpenCV-OOM in Worker-Prozessen zu vermeiden. Bei Bedarf z. B. `--workers 2` testen. Zusätzlich hilft oft: **Auslagerungsdatei vergrößern** (Systemsteuerung → Leistung), andere Programme schließen, bei VRAM-Engpass **`--batch`** reduzieren (z. B. 8).
+- Warnung `VIRTUAL_ENV ... does not match`: im Projektordner `cd` und `uv run ...` nutzen, oder `deactivate` und keine fremde `.venv` aktivieren.
+- `candy_dataset/data.yaml` nutzt **kein** `path: .` im Root; sonst sucht Ultralytics `images/val` im Projektverzeichnis statt unter `candy_dataset/`.
+- Gewichte: `predict_test.py` und `webcam_detect.py` nehmen standardmäßig das **neueste** `runs/**/weights/best.pt`, oder `--weights` setzen.
+- **Vollständiges Training** braucht mehr Epochen (z. B. 50–100); ein kurzer Testlauf mit `--epochs 1` ist zum Durchstellen der Pipeline geeignet.
+- **Expert (OBB, zusätzliche Klassen):** Das aktuelle Dataset ist **YOLO-Detect** (achsenausgerichtete Boxen). OBB und neue Klassen (z. B. Schrauben) erfordern angepasste Labels bzw. `data.yaml` und ein OBB-Modell (`yolo train task=obb`); siehe [Ultralytics OBB](https://docs.ultralytics.com/tasks/obb/).

@@ -73,8 +73,8 @@ def copy_split(
 
 def write_data_yaml(out_root: Path, names: list[str]) -> None:
     lines = [
-        "# Ultralytics YOLO – Pfade relativ zu diesem Verzeichnis (candy_dataset/)",
-        "path: .",
+        "# Ultralytics YOLO: train/val/test relativ zum Ordner dieser YAML (candy_dataset/).",
+        "# Kein path:-Eintrag: Root ist das Verzeichnis von data.yaml (siehe Ultralytics-Doku).",
         "train: images/train",
         "val: images/val",
         "test: images/test",

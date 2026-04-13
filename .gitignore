@@ -9,6 +9,10 @@ __pycache__/
 # Lokales YOLO-Dataset (groß; mit split_dataset.py aus Label-Studio-Export erzeugen)
 candy_dataset/
 
+# YOLO-Trainingsläufe und heruntergeladene Gewichte
+runs/
+*.pt
+
 # Label Studio: lokale Bilder/Daten unter mydata nicht versionieren
 mydata/**
 !mydata/.gitkeep
