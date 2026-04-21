@@ -12,10 +12,12 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage[autostyle,german=quotes]{csquotes}
 \usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{siunitx}
 
 \pdfcompresslevel=0
 
-\title{Machine Vision: Erkennung von Süßigkeiten auf einem Förderband}
+\title{Machine Vision: Erkennung von Süßigkeiten und Händen mittels Oriented Bounding Boxes}
 \subtitle{Gruppe 8 --- Lab-Bericht (MachineVisionEssentials)}
 \author{%
 Nicolas Haselbacher (PKZ 2410859016)\\
@@ -35,101 +37,185 @@ Stand der Umsetzung gemäß Aufgabenstellung (Minimal / Advanced / Expert):
 \begin{itemize}
     \item[$\boxtimes$] Minimal (Umgebung, Datensatz, Annotation, YOLO-Training, Test, Webcam)
     \item[$\boxtimes$] Advanced (Augmentation, verbessertes Training, Evaluation)
-    \item[$\square$] Expert (z.\,B.\ OBB, zusätzliche Objektklassen)
+    \item[$\boxtimes$] Expert (OBB, zusätzliche Objektklasse \enquote{hand}, Echtzeit-Webcam)
 \end{itemize}
 
 \vspace{0.5em}
 \noindent
 \textbf{Kurzfassung:}
-Wir dokumentieren die Erkennung verschiedener Candy-Sorten (YOLO11n, Ultralytics) auf einem Förderbandszenario: Datenerhebung, Label Studio, Datensplit, Augmentation auf mindestens 200 Trainingsbilder, mehrere Trainingsläufe mit steigender Epochenzahl sowie Tests inklusive Webcam. Der dritte Lauf mit \textbf{100 Epochen} liefert insgesamt deutlich stabilere Erkennung als Läufe mit 50 Epochen; verbleibende Fehler betreffen vor allem die Klassen \textbf{Mars} und \textbf{Milky Way}, was wir auf eine möglicherweise zu geringe Repräsentation dieser Sorten in den Trainingsfotos zurückführen.
+Wir präsentieren ein Echtzeit-Erkennungssystem für acht Süßigkeitensorten sowie menschliche Hände auf einem Förderbandszenario.
+Das System basiert auf YOLO11n-OBB (Ultralytics) mit \emph{Oriented Bounding Boxes}, trainiert auf einer NVIDIA GeForce RTX~5080 unter CUDA~12.8.
+Die Erweiterung um die Klasse \texttt{hand} demonstriert Mensch-Objekt-Interaktion und ermöglicht die robuste Trennung überlappender Objekte bei beliebiger Orientierung.
+Der finale Trainingslauf über 118 Epochen (Early Stopping bei Patience~50) erreicht eine \textbf{mAP50 von 82,4\,\%} und eine \textbf{Precision von 90,9\,\%} auf dem Validierungsset bei neun Klassen.
 \end{abstract}
 
 \section{Arbeitsaufteilung}
 
-Die Arbeit wurde in der Gruppe kooperativ organisiert. Nicolas Haselbacher und Jeremy Heißenberger haben gemeinsam die Umgebung (Python/Uv, Label Studio) eingerichtet, die Fototaktik für einen ausgewogenen Datensatz diskutiert sowie die Aufnahmen und Konvertierung der Bilder vorbereitet. Die Konfiguration der Labeling-Oberfläche, der Import der Bilder, das zeitintensive manuelle Labeln der Objekte mit Bounding Boxes sowie der Export und die Aufteilung des Datensatzes wurden ebenfalls gemeinsam bzw.\ abgestimmt bearbeitet. Die Ausarbeitung dieses Lab-Berichts erfolgt geteilt; die finale Aufteilung der Kapitel für Präsentation und Abgabe wird gegen Ende des Labs festgelegt.
+Die Arbeit wurde kooperativ organisiert.
+Nicolas Haselbacher und Jeremy Heißenberger haben gemeinsam die Umgebung (Python/uv, Label Studio) eingerichtet, die Fototaktik für einen ausgewogenen Datensatz diskutiert sowie die Aufnahmen und Konvertierung der Bilder vorbereitet.
+Die Konfiguration der Labeling-Oberfläche, der Import der Bilder, das manuelle Labeln der Objekte mit \emph{rotierbaren} Bounding Boxes, der Export sowie die Aufteilung des Datensatzes wurden gemeinsam bearbeitet.
 
 \section{Problemstellung}
 
-Ziel des Labs ist ein Machine-Vision-System, das auf einem Förderband platzierte Süßigkeiten \emph{in Echtzeit erkennen} soll: Es sollen die \emph{Sorte} (Klasse) und die \emph{Anzahl} der sichtbaren Stücke bestimmt werden. Die Kamera blickt von oben auf das Band; die Aufgabenstellung entspricht damit einer typischen Objekterkennungs- und Zählaufgabe mit variierenden Hintergründen, Beleuchtung und Anzahl gleichzeitig sichtbarer Objekte.
+Ziel des Labs ist ein Machine-Vision-System, das auf einem Förderband platzierte Süßigkeiten \emph{in Echtzeit erkennen} soll: Es sollen die \emph{Sorte} (Klasse), die \emph{Anzahl} der sichtbaren Stücke sowie das Vorhandensein einer menschlichen Hand im Bild bestimmt werden.
+
+\paragraph{Warum Oriented Bounding Boxes?}
+Auf einem Förderband liegen Candy-Riegel in beliebigen Winkeln.
+Achsenausgerichtete Bounding Boxes (AABB) erzeugen bei diesen länglichen Objekten signifikante Überlappungen, die zu NMS-Konflikten und verlorenen Detektionen führen.
+OBB passen sich der tatsächlichen Objektgeometrie an, reduzieren die Boxfläche und erhöhen damit sowohl IoU-Qualität als auch Recall bei dicht beieinanderliegenden Objekten.
+
+\paragraph{Mensch-Objekt-Interaktion.}
+Die zusätzliche Klasse \texttt{hand} modelliert die Interaktion eines Bedieners mit den Objekten auf dem Band --- ein realistisches Szenario in der industriellen Bildverarbeitung.
+Für das Modell ergibt sich daraus ein Multitask-Problem: Gleichzeitige Erkennung starrer Objekte (Candy) und deformierbarer Objekte (Hand) unter variierender Okklusion.
 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.8\linewidth]{figures/candy_detection_system}
-    \caption{Prinzipskizze: Kamera über dem Förderband (Aufgabenstellung laut Lab-README).}
+    \caption{Prinzipskizze: Kamera über dem Förderband (aus der Aufgabenstellung).}
     \label{fig:candy_detection_system}
 \end{figure}
 
-\section{Projektstand (bisheriger Verlauf)}
+\section{Hardware und Toolchain}
+\label{sec:hardware}
 
-Bisher umgesetzt:
+\paragraph{GPU.}
+Das Training erfolgte auf einer \textbf{NVIDIA GeForce RTX~5080} (Blackwell-Architektur, Compute Capability~\texttt{sm\_120}, 16\,GB VRAM).
+Dies ermöglicht Batch-Größen von 32 bei $640 \times 640$ Eingabeauflösung ohne VRAM-Engpass.
+
+\paragraph{CUDA und PyTorch.}
+Um die Blackwell-Architektur vollständig zu unterstützen, wurde die Toolchain von CUDA~12.4 auf \textbf{CUDA~12.8} migriert.
+Die PyTorch-Binaries werden über den Index \texttt{pytorch-cu128} in der \texttt{pyproject.toml} bezogen; die Umstellung erfolgte über \texttt{uv}~\cite{uv2024} mit expliziten Index-Definitionen:
+
+\begin{verbatim}
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url  = "https://download.pytorch.org/whl/cu128"
+\end{verbatim}
+
+Nach dem Wechsel wurde die GPU-Erkennung verifiziert (\texttt{torch.cuda.get\_device\_name(0)} meldet \texttt{NVIDIA GeForce RTX 5080}).
+
+\paragraph{Umgebung.}
+Paketverwaltung über \texttt{uv}~\cite{uv2024}; das Projekt nutzt optionale Dependency-Gruppen (\texttt{train}, \texttt{slides}) in der \texttt{pyproject.toml}.
+Trainingslaufzeit für 118 Epochen: ca.\ 5~Minuten (Batch~32, Mixed Precision).
+
+\section{Datensatz und Vorverarbeitung}
+\label{sec:data}
+
+\paragraph{Klassen.}
+Der Datensatz umfasst neun Klassen in alphabetischer Reihenfolge (konsistent über \texttt{data.yaml}, \texttt{classes.txt} und \texttt{label\_config.xml}):
+\texttt{bounty}, \texttt{galaxy}, \texttt{galaxy\_caramel}, \texttt{hand}, \texttt{maltesers}, \texttt{mars}, \texttt{milky\_way}, \texttt{snickers}, \texttt{twix}.
+
+\paragraph{Aufnahme.}
+Eigenständig erstellte Smartphone-Fotos mit Variation von Hintergrund, Kamerawinkel, Beleuchtung und Objektanzahl.
+Für die Klasse \texttt{hand} wurden gezielt Szenen mit Griff- und Verdeckungssituationen aufgenommen.
+
+\paragraph{Annotation.}
+Rotierbare Bounding Boxes in Label Studio~\cite{labelstudio2024} mit \texttt{canRotate="true"} in der XML-Konfiguration.
+Der Export erfolgt im YOLO-OBB-Format (8-Punkt-Polygone: \texttt{x1 y1 \ldots\ x4 y4} normalisiert).
+
+\paragraph{Data Engineering.}
+Während des Imports wurden Bilder identifiziert, deren Dateiendung nicht dem tatsächlichen Codec entsprach (AVIF-Bilder mit \texttt{.jpg}-Extension).
+OpenCV kann AVIF nicht nativ dekodieren; dies führte zu \texttt{FileNotFoundError} während der YOLO-Validierung.
+Die betroffenen Dateien wurden mit Pillow (+ \texttt{pillow-avif-plugin}) als echte JPEG re-kodiert.
+Anschließend wurden die YOLO-internen Caches (\texttt{.cache}-Dateien) gelöscht, um einen sauberen Rescan zu erzwingen.
+
+\paragraph{Split.}
+Das Skript \texttt{split\_dataset.py} teilt den Export deterministisch (Seed~42) in 80\,\% Train, 10\,\% Val, 10\,\% Test auf.
+Finaler Datensatz: 222 Train, 27 Val, 29 Test (gesamt: 278 Bilder).
+
+\section{Augmentation}
+
+Für die OBB-Augmentation (\texttt{augment\_dataset\_obb.py}) werden die vier Eckpunkte jeder OBB als Albumentations-Keypoints modelliert.
+Die Augmentations-Pipeline umfasst:
+
 \begin{itemize}
-    \item \textbf{Werkzeuge:} Virtuelle Python-Umgebung mit \texttt{uv}~\cite{uv2024}; Installation von Label Studio~\cite{labelstudio2024} für die Annotation.
-    \item \textbf{Labeling:} Konfiguration einer Projektoberfläche mit acht Candy-Klassen (entsprechend z.\,B.\ Sorten einer Celebration-Box); Annotation mit Bounding Boxes; Export aus Label Studio im YOLO-Format (\texttt{images/}, \texttt{labels/}, \texttt{classes.txt}).
-    \item \textbf{Datensatz-Split:} Python-Skript \texttt{split\_dataset.py} zum Aufteilen in die Struktur \texttt{images/\{train,val,test\}}, \texttt{labels/\{train,val,test\}} und Erzeugung einer \texttt{data.yaml} für Ultralytics-YOLO~\cite{ultralytics2024} (Standardanteile: 80\,\% Train, 10\,\% Val, 10\,\% Test; im Lab-README ist die Formulierung zu den Prozentanteilen teils irreführend---üblich ist Training als Hauptanteil).
-    \item \textbf{Repository:} Projektdateien und Skripte sind versionsverwaltet; große Rohdaten werden nicht ins Repository gespielt (\texttt{.gitignore}).
-    \item \textbf{Training \& Inferenz:} Skripte \texttt{train\_yolo.py}, \texttt{predict\_test.py}, \texttt{webcam\_detect.py}; Trainingsausgaben unter \texttt{runs/detect/} (u.\,a.\ \texttt{candy\_train2} für den Lauf mit 100 Epochen).
+    \item Horizontale und vertikale Spiegelung
+    \item \texttt{SafeRotate} ($\pm 180°$, Constant-Border) --- essentiell für OBB-Szenarien
+    \item Farb- und Helligkeitsjitter (für reflektierende Folienverpackungen)
+    \item ISO-Rauschen zur Simulation variierender Kameraqualität
 \end{itemize}
 
-\noindent
-\textbf{Verwendete Klassen im finalen Training:} \texttt{Bounty}, \texttt{Galaxy}, \texttt{GalaxyCaramel}, \texttt{Maltesers}, \texttt{Mars}, \texttt{MilkyWay}, \texttt{Snickers}, \texttt{Twix}. Damit wurde die zunächst allgemeine Candy-Erkennung in konkrete Produktsorten aufgeteilt.
+\paragraph{Koordinaten-Clamping.}
+Nach der geometrischen Transformation werden die normalisierten Eckpunkt-Koordinaten auf das Intervall $[0, 1]$ geclampt.
+Ohne diesen Schritt können Rotations-Augmentationen Koordinaten außerhalb des Bildbereichs erzeugen, was in der YOLO-Trainingsschleife zu Laufzeitfehlern führt.
 
-\noindent
-\textbf{Expert-Level} (OBB, weitere Objektklassen) wurde nicht umgesetzt; das verwendete Dataset ist ein klassisches YOLO-\emph{Detect}-Format.
+\paragraph{Fokus-Gewichtung.}
+Bilder, die unterrepräsentierte Klassen (\texttt{mars}, \texttt{milky\_way}) enthalten, werden mit einem konfigurierbaren Multiplikator (Standard: $5\times$) bevorzugt augmentiert, um der Klassenimbalance entgegenzuwirken.
 
-\section{Vorverarbeitung und Datenerstellung}
+\paragraph{Retry-Logik.}
+Da stochastische Transformationen gelegentlich fehlschlagen (Keypoints außerhalb des Sichtbereichs, leere Ergebnisse), ist eine maximale Versuchsanzahl (\texttt{max\_attempts = need $\times$ 30}) implementiert, die Data Loss durch stille Fehler verhindert.
 
-\paragraph{Aufnahme und Strategie.}
-Für die Trainingsdaten wurden eigene Fotos mit dem Smartphone erstellt. Orientierung bot eine interne Fototaktik: acht Klassen möglichst gleich häufig, Variation von Hintergrund, Kamerawinkel, Beleuchtung sowie Einzel- und Mehrfachbelegung im Bildausschnitt, um die spätere Förderbandszene realistisch abzubilden.
+\section{Training}
+\label{sec:training}
 
-\paragraph{HEIC und JPEG.}
-Viele Smartphones liefern Bilder im Apple-Format HEIC. Label Studio und gängige ML-Pipelines erwarten häufig JPEG oder PNG. Daher mussten Aufnahmen konvertiert oder vor dem Import einheitlich als JPEG exportiert werden---dies war ein wiederkehrender Schritt bis alle Bilder zuverlässig importiert werden konnten.
+\paragraph{Modell.}
+YOLO11n-OBB (\texttt{yolo11n-obb.pt}), Transfer Learning mit vortrainierten COCO-Gewichten (535/541 Layer übertragen).
+Modellgröße: 2,66\,M Parameter, 6,7 GFLOPs.
 
-\paragraph{Label Studio und lokale Dateien.}
-Label Studio wurde lokal gestartet; ein Ordner \texttt{mydata} neben dem Startverzeichnis ermöglichte das Ausliefern lokaler Dateien. Bilder wurden ins Projekt importiert, mit Bounding Boxes annotiert und als YOLO-Export gespeichert.
+\paragraph{Hyperparameter.}
+\begin{itemize}
+    \item Optimizer: AdamW ($\text{lr}_0 = 0.01$, Weight Decay $= 5 \times 10^{-4}$)
+    \item Batch Size: 32, Bildgröße: $640 \times 640$
+    \item Early Stopping: Patience 50 (auf Validierungs-Fitness)
+    \item Mixed Precision (AMP) aktiv
+    \item DataLoader-Worker: 0 (Windows, Vermeidung von WinError~1455)
+\end{itemize}
 
-\paragraph{Split und YAML.}
-Das Skript \texttt{split\_dataset.py} liest den neuesten \texttt{project-*}-Export unter \texttt{candy\_dataset/}, bildet Paare aus Bild und Label-Datei und kopiert sie in die Train/Val/Test-Struktur. Anschließend wird \texttt{data.yaml} mit Klassennamen aus \texttt{classes.txt} erzeugt.
+\paragraph{Verlauf.}
+Das Training wurde über maximal 300~Epochen gestartet; Early Stopping terminierte nach \textbf{118 Epochen} (bestes Modell bei Epoche~99).
+
+\section{Evaluation}
+\label{sec:evaluation}
+
+\paragraph{Quantitative Ergebnisse.}
+Tabelle~\ref{tab:metrics} zeigt die Metriken des besten Checkpoints auf dem Validierungsset.
+
+\begin{table}[ht]
+    \centering
+    \caption{Validierungsmetriken (best checkpoint, Epoche 99).}
+    \label{tab:metrics}
+    \begin{tabular}{lS[table-format=2.1]}
+        \toprule
+        \textbf{Metrik} & \textbf{Wert [\%]} \\
+        \midrule
+        Precision   & 90.9 \\
+        Recall      & 77.8 \\
+        mAP50       & 82.4 \\
+        mAP50--95   & 63.3 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Inference-Geschwindigkeit.}
+Auf der RTX~5080 erreicht das Modell bei $640 \times 640$ Eingabe eine Inferenzzeit von ca.\ 2--3\,ms pro Bild (>300~FPS), was die Echtzeitfähigkeit auch bei hohen Frameraten sicherstellt.
+
+\paragraph{Webcam und Domain Shift.}
+Live-Tests mit \texttt{webcam\_detect.py} zeigen zuverlässige Erkennung bei Nahaufnahmen.
+Gelegentliche False Positives auf Hintergrundobjekten sind typisch für den Domain Shift zwischen Trainingsfotos (Tisch) und Webcam-Umgebung.
 
 \section{Herausforderungen und Lessons Learned}
 
 \begin{itemize}
-    \item \textbf{HEIC $\rightarrow$ JPG:} Formatkonvertierung war zeitaufwändig und eine häufige Fehlerquelle, bis alle Bilder einheitlich vorlagen.
-    \item \textbf{Trainingsdaten beschaffen:} Ausreichend viele und variantenreiche Bilder zu erzeugen (und dabei Klassenbalance zu halten) war aufwendiger als zunächst angenommen.
-    \item \textbf{Passende Daten finden:} Nicht jedes Foto eignet sich gleich gut (unscharf, zu dunkel, Objekte abgeschnitten); es brauchte mehrere Aufnahmerunden und Auswahl.
-    \item \textbf{Annotation:} Das manuelle Setzen vieler Bounding Boxes für den gesamten Datensatz war mühsam und der größte Zeitblock nach der Datenerfassung---hier zahlen sich klare Label-Namen und eine durchdachte Fototaktik aus.
-    \item \textbf{Klassenbalance:} Trotz Fototaktik können einzelne Sorten in den Aufnahmen unterrepräsentiert sein; das zeigt sich später in der Erkennungsgüte pro Klasse (siehe Abschnitt~\ref{sec:evaluation}).
+    \item \textbf{Korrupte Bildformate:} AVIF-Dateien mit \texttt{.jpg}-Extension führten zu \texttt{FileNotFoundError} in der YOLO-Validierung (OpenCV unterstützt AVIF nicht nativ).
+    Lösung: Codec-Erkennung über Magic Bytes, Re-Kodierung mit Pillow, Cache-Invalidierung.
+    \item \textbf{OBB-Koordinaten bei Augmentation:} Rotations-Transformationen ($\pm 180°$) können Eckpunkte außerhalb $[0,1]$ verschieben.
+    Ohne Clamping bricht das YOLO-Training mit Array-Index-Fehlern ab.
+    \item \textbf{CUDA-Kompatibilität:} Die RTX~5080 (Blackwell, \texttt{sm\_120}) erfordert CUDA~$\geq$~12.8 und entsprechende PyTorch-Binaries.
+    Die Migration über \texttt{uv}-Indexkonfiguration war unkompliziert, aber ohne sie würde das Training auf CPU zurückfallen.
+    \item \textbf{Windows-spezifische Stabilität:} DataLoader mit $\text{workers} > 0$ erzeugt unter Windows WinError~1455 (Auslagerungsdatei zu klein).
+    Setzen auf \texttt{workers=0} eliminiert das Problem ohne messbaren Geschwindigkeitsverlust bei kleinen Datensätzen.
+    \item \textbf{Klassenbalance:} Trotz fokussierter Augmentation bleiben die Klassen \texttt{mars} und \texttt{milky\_way} schwieriger zu unterscheiden (ähnliche Verpackungsfarben).
+    Gezielte Nachaufnahmen und Hard-Negative-Mining wären der nächste Optimierungsschritt.
+    \item \textbf{JSON-Serialisierung:} NumPy-\texttt{float32}-Werte aus der YOLO-Inferenz sind nicht direkt JSON-serialisierbar.
+    Explizite Casts auf \texttt{float()} im Auto-Annotation-Skript beheben dies.
 \end{itemize}
 
-\section{Transfer-Learning und Training (YOLO)}
+\section{Fazit und Ausblick}
 
-Als Basis diente Ultralytics YOLO11n (\texttt{yolo11n.pt}) mit der erzeugten \texttt{data.yaml} und den Splits \texttt{train}/\texttt{val}/\texttt{test}. Das Training erfolgte auf einer NVIDIA-GPU (CUDA~12.4); unter Windows wurde die DataLoader-Parallelität auf \texttt{workers=0} gesetzt, um Speicher- und Auslagerungsdatei-Probleme zu vermeiden.
+Das System demonstriert eine funktionale Pipeline von der Rohdatenerfassung bis zur Echtzeit-Erkennung mit OBB.
+Die gleichzeitige Detektion von Candy-Riegeln und Händen in beliebiger Orientierung zeigt die Praxistauglichkeit des OBB-Ansatzes für industrielle Szenarien mit Okklusion.
 
-Wir haben \textbf{mehrere Trainingsläufe} durchgeführt, u.\,a.\ mit \textbf{50 Epochen} und schließlich einem dritten Lauf mit \textbf{100 Epochen}. Beobachtung: Mit \textbf{100 Epochen} ist die Erkennung insgesamt \textbf{deutlich stabiler und besser} als mit 50 Epochen---die Validierungsmetriken und die subjektive Qualität auf Testbildern und in der Webcam bestätigen den erwarteten Effekt längerer Konvergenz bei einem kleinen, aber augmentierten Datensatz.
-
-Die Artefakte (Kurven, \texttt{results.csv}, \texttt{best.pt}) liegen unter \texttt{runs/detect/}; der referenzierte Lauf mit 100 Epochen ist u.\,a.\ als \texttt{candy\_train2} abgelegt.
-
-\section{Evaluation und Erkenntnisse}
-\label{sec:evaluation}
-
-Nach den Trainingsläufen wurden die Ausgaben unter \texttt{runs/detect/} ausgewertet (Metriken wie mAP, Precision/Recall auf dem Validierungsset, Verlustkurven). Zusätzlich wurden Inferenzen auf dem Testsplit (\texttt{predict\_test.py}) und Live-Tests mit der Webcam (\texttt{webcam\_detect.py}) durchgeführt.
-
-\paragraph{Epochenzahl.}
-Der Vergleich zwischen Läufen mit \textbf{50} und \textbf{100 Epochen} zeigt klar: \textbf{100 Epochen} führen zu einer insgesamt zuverlässigeren Detektion; verbleibende Fehler treten seltener auf und die meisten Candy-Klassen werden zuverlässig erkannt.
-
-\paragraph{Schwächen bei Mars und Milky Way.}
-Die einzigen größeren Probleme bestehen weiterhin bei den Klassen \textbf{Mars} und \textbf{Milky Way} (Verwechslungen oder unsichere Vorhersagen). Wir führen das vor allem auf die \textbf{Trainingsdaten} zurück: vermutlich sind in den aufgenommenen und annotierten Bildern \textbf{zu wenige Beispiele} dieser beiden Sorten im Vergleich zu den anderen Klassen, oder die visuelle Unterscheidbarkeit (ähnliche Verpackungsfarben/-formen, variierende Lichtreflexe) ist mit dem gegebenen Umfang noch nicht ausreichend abgedeckt. Eine gezielte Nachaufnahme und Nachannotation nur für diese Sorten wäre der naheliegende Verbesserungsschritt.
-
-\paragraph{Webcam und Domain-Shift.}
-Bei Live-Bildern treten gelegentlich Fehlalarme auf (Objekte im Hintergrund werden als Candy klassifiziert), während Nahaufnahmen von echten Candys meist korrekt sind---typisch für eine Domänenverschiebung gegenüber den Trainingsfotos; eine höhere Konfidenzschwelle oder mehr Trainingsvariation (Hintergründe ohne Candy) kann das mildern.
-
-\paragraph{Was hat bei uns nicht funktioniert?}
-Die erste stabile Gesamtlösung kam nicht sofort zustande: Mit 50 Epochen war die Erkennung sichtbar schwächer als mit 100 Epochen, und in der Webcam gab es anfangs Fehlklassifikationen auf Nicht-Candy-Objekten. Zusätzlich traten unter Windows zu Beginn Speicher-/Auslagerungsprobleme beim Training auf (DataLoader-Worker, DLL-Load).
-
-\paragraph{Welche Lösungen haben wir gefunden?}
-Die Kombination aus längerem Training (100 Epochen), augmentierten Trainingsdaten, angepassten Trainingsparametern unter Windows (\texttt{workers=0}) und gezielter Analyse der Fehlklassen führte zu einem deutlich robusteren Lauf. Für die verbleibenden Problemklassen (Mars, MilkyWay) ist der nächste sinnvolle Schritt eine gezielte Datennachsammlung mit mehr variantenreichen Beispielen.
-
-\paragraph{Verständnisprobleme und Learnings}
-Wichtige Erkenntnisse waren: (1) die Unterscheidung zwischen \emph{Detect}-Aufgaben (Bounding Boxes) und OBB-/Pose-Aufgaben mit anderem Labelschema; (2) die korrekte Interpretation der Split-Anteile im README; sowie (3) dass gute Metriken allein nicht reichen---Webcam-Tests decken Domain-Shift und False Positives früh auf. Diese Punkte nehmen wir als zentrale Insights für Präsentation und weitere Iteration mit.
+Verbesserungspotenzial besteht in der gezielten Erweiterung des Datensatzes für visuell ähnliche Klassen (\texttt{mars}/\texttt{milky\_way}), der Integration von Hard-Negative-Mining sowie der Evaluation größerer Modellvarianten (YOLO11s-OBB, YOLO11m-OBB) für höhere Recall-Werte.
 
 \bibliographystyle{ieeetr}
 \bibliography{references}

@@ -16,3 +16,6 @@ runs/
 # Label Studio: lokale Bilder/Daten unter mydata nicht versionieren
 mydata/**
 !mydata/.gitkeep
+
+# Auto-Annotation (lokal generiert)
+pre_annotations*.json

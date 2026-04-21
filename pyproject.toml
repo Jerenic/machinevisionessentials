@@ -9,8 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# PowerPoint: zusammen mit train installieren, sonst werden GPU-Pakete entfernt:
-#   uv sync --extra train --extra slides && uv run --extra train --extra slides python presentation/build_presentation.py
+# Optional: python-pptx für eigene Präsentationen außerhalb dieses Repos.
 slides = [
     "python-pptx>=1.0.0",
 ]
@@ -24,12 +23,12 @@ train = [
     "torchvision",
 ]
 
-# PyTorch mit NVIDIA-GPU (CUDA 12.4). Für CPU-only: Index unten auf .../whl/cpu setzen.
+# PyTorch mit NVIDIA-GPU (CUDA 12.8). Für CPU-only: Index unten auf .../whl/cpu setzen.
 [[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu124" }
-torchvision = { index = "pytorch-cu124" }
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }

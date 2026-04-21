@@ -10,6 +10,8 @@
     <Label value="mars" background="#AD1457"/>
     <Label value="twix" background="#D84315"/>
     <Label value="milky_way" background="#1565C0"/>
-    <Label value="galaxy_truffle" background="#4527A0"/>
+    <Label value="galaxy_caramel" background="#4527A0"/>
+    <!-- Expert: zusätzliche Klasse. YOLO-class_id kommt aus Label-Studio-Export (häufig alphabetisch nach Klassennamen → hand oft Index 3). -->
+    <Label value="hand" background="#37474F"/>
   </RectangleLabels>
 </View>

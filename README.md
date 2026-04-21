@@ -168,31 +168,87 @@ cv2.destroyAllWindows()
 
 Use the provided Latex Template in Moodle and write a lab report. Document every step you made, every challenge, every pit fall what you encounterd. Also make a presentation for the next lecture, it should be 10 Minutes where you recap everything from the lab report.
 
----
+## Umsetzungsstand
 
-## Ausführung in diesem Repository (automatisiert)
+| Level | Status | Beschreibung |
+|-------|--------|-------------|
+| **Minimal** | ✅ | Umgebung, Datensatz (8 Candy-Klassen), Annotation, YOLO-Training, Test, Webcam |
+| **Advanced** | ✅ | Augmentation (OBB-Keypoints), verbessertes Training (100+ Epochen), Evaluation |
+| **Expert** | ✅ | OBB (Oriented Bounding Boxes), zusätzliche Klasse `hand`, Echtzeit-Webcam |
 
-Voraussetzungen: `candy_dataset/` mit `data.yaml`, `images/{train,val,test}`, `labels/{...}` (z. B. nach `split_dataset.py` + Label-Studio-Export).
+## Projektstruktur (Expert)
 
-Optional **Extras** für Training, Augmentation und Webcam. In `pyproject.toml` ist PyTorch über den Index **`cu124`** (CUDA 12.4, NVIDIA-GPU) verdrahtet. Nur CPU: Index in `[[tool.uv.index]]` auf `https://download.pytorch.org/whl/cpu` stellen und `uv lock` / `uv sync --extra train` erneut ausführen.
+```
+├── main.py                    # Label Studio starten
+├── split_dataset.py           # Export → train/val/test Split + data.yaml
+├── augment_dataset.py         # Augmentation AABB (Advanced)
+├── augment_dataset_obb.py     # Augmentation OBB mit Keypoint-Clamping (Expert)
+├── train_yolo.py              # Training YOLO-Detect (Minimal/Advanced)
+├── train_yolo_obb.py          # Training YOLO-OBB (Expert)
+├── auto_annotate_obb.py       # Auto-Annotation → Label Studio JSON (Expert)
+├── predict_test.py            # Inferenz auf Testsplit
+├── webcam_detect.py           # Echtzeit-Webcam-Erkennung
+├── label_config.xml           # Label Studio Konfiguration (9 Klassen, canRotate)
+├── pyproject.toml             # uv: Dependencies + PyTorch CUDA 12.8 Index
+├── candy_dataset/
+│   ├── data.yaml              # 9 Klassen (alphabetisch, vgl. Label-Studio-Export)
+│   ├── images/{train,val,test}/
+│   └── labels/{train,val,test}/
+├── Report_Template/paper.tex  # Lab-Bericht (LaTeX)
+└── runs/obb/                  # Trainingsartefakte (lokal; nicht versioniert)
+```
+
+## Ausführung
+
+### Voraussetzungen
+
+- Python ≥ 3.12, `uv` installiert
+- NVIDIA GPU mit CUDA ≥ 12.8 (getestet: RTX 5080, Blackwell/sm_120)
+- `candy_dataset/` mit gelabelten OBB-Daten (Label Studio Export)
 
 ```bash
 uv sync --extra train
 ```
 
+PyTorch wird über den Index `pytorch-cu128` in `pyproject.toml` bezogen. Für CPU-only den Index auf `https://download.pytorch.org/whl/cpu` ändern und `uv lock && uv sync --extra train` erneut ausführen.
+
+GPU-Check:
+```bash
+uv run --extra train python -c "import torch; print(torch.cuda.get_device_name(0))"
+```
+
+### Pipeline-Befehle
+
 | Schritt | Befehl |
-|--------|--------|
-| **Augmentation** (Advanced, Ziel ≥ 200 Train-Bilder) | `uv run --extra train python augment_dataset.py --target 200` |
-| **Training** (Step 3) | `uv run --extra train python train_yolo.py --epochs 50 --batch 8 --device 0` (Windows: `--workers 0` ist Standard; ggf. `--batch` senken) |
-| **Test-Inferenz** (Step 4) | `uv run --extra train python predict_test.py --device 0` → Ausgaben unter `runs/detect/predict_test/` |
-| **Webcam** (Step 5) | `uv run --extra train python webcam_detect.py --device 0` (Taste `q` beenden) |
+|---------|--------|
+| **Split** | `uv run --extra train python split_dataset.py --source candy_dataset/project_obb_full_hand --out candy_dataset` |
+| **Augmentation (OBB)** | `uv run --extra train python augment_dataset_obb.py --target 300 --focus-classes mars milky_way` |
+| **Training (OBB)** | `uv run --extra train python train_yolo_obb.py --epochs 300 --batch 32 --device 0 --patience 50 --optimizer AdamW --name obb/candy_train` |
+| **Test-Inferenz** | `uv run --extra train python predict_test.py --device 0` |
+| **Webcam (Live)** | `uv run --extra train python webcam_detect.py --device 0` (Taste `q` beendet) |
+| **Auto-Annotation** | `uv run --extra train python auto_annotate_obb.py --model runs/obb/candy_train/weights/best.pt --images mydata/Candies` |
 
-**Hinweise:**
+Präsentation (PPTX) und Fototaktik liegen **außerhalb** dieses Repos (lokal verschoben).
 
-- Nach `uv sync` prüfen: `uv run --extra train python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"`.
-- **Windows / wenig RAM:** `train_yolo.py` setzt standardmäßig **`--workers 0`** (keine parallelen DataLoader-Prozesse), um WinError 1455 („Auslagerungsdatei zu klein“) und OpenCV-OOM in Worker-Prozessen zu vermeiden. Bei Bedarf z. B. `--workers 2` testen. Zusätzlich hilft oft: **Auslagerungsdatei vergrößern** (Systemsteuerung → Leistung), andere Programme schließen, bei VRAM-Engpass **`--batch`** reduzieren (z. B. 8).
-- Warnung `VIRTUAL_ENV ... does not match`: im Projektordner `cd` und `uv run ...` nutzen, oder `deactivate` und keine fremde `.venv` aktivieren.
-- `candy_dataset/data.yaml` nutzt **kein** `path: .` im Root; sonst sucht Ultralytics `images/val` im Projektverzeichnis statt unter `candy_dataset/`.
-- Gewichte: `predict_test.py` und `webcam_detect.py` nehmen standardmäßig das **neueste** `runs/**/weights/best.pt`, oder `--weights` setzen.
-- **Vollständiges Training** braucht mehr Epochen (z. B. 50–100); ein kurzer Testlauf mit `--epochs 1` ist zum Durchstellen der Pipeline geeignet.
-- **Expert (OBB, zusätzliche Klassen):** Das aktuelle Dataset ist **YOLO-Detect** (achsenausgerichtete Boxen). OBB und neue Klassen (z. B. Schrauben) erfordern angepasste Labels bzw. `data.yaml` und ein OBB-Modell (`yolo train task=obb`); siehe [Ultralytics OBB](https://docs.ultralytics.com/tasks/obb/).
+### Ergebnisse (bester Lauf: `runs/obb/candy_full_hand2`)
+
+| Metrik | Wert |
+|--------|------|
+| Precision | 90,9 % |
+| Recall | 77,8 % |
+| mAP50 | 82,4 % |
+| mAP50-95 | 63,3 % |
+| Bester Checkpoint | Epoche 68 / 118 (Early Stopping) |
+| Modell | YOLO11n-OBB (2,66 M Param., 6,7 GFLOPs) |
+| Inferenz | ~2–3 ms/Bild (>300 FPS, RTX 5080) |
+
+### Klassen (9, alphabetisch)
+
+`bounty`, `galaxy`, `galaxy_caramel`, `hand`, `maltesers`, `mars`, `milky_way`, `snickers`, `twix`
+
+### Hinweise
+
+- **Windows:** `--workers 0` ist Standard in den Trainings-Skripten (vermeidet WinError 1455).
+- **data.yaml:** Kein `path:`-Eintrag — Ultralytics löst Pfade relativ zur YAML auf.
+- **Gewichte:** `predict_test.py` und `webcam_detect.py` nutzen automatisch das neueste `runs/**/weights/best.pt`.
+- **AVIF-Bilder:** Einige Web-Bilder hatten `.jpg`-Extension aber AVIF-Codec. Diese wurden mit Pillow re-kodiert; YOLO-Caches (`.cache`) danach gelöscht.
